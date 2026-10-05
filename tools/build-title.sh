@@ -60,6 +60,58 @@ bash "$root/tools/setup-native-dependencies.sh" >/dev/null
 
 echo "==> [title] step 1/3: the frontend"
 "$root/tools/build-retroarch.sh"
+# PS5_TITLE_CORES_DIR points at a tree of cores already built: cores/ holding
+# the *_libretro.so files, info/ (or cores/, as the deployed package keeps
+# both) holding the matching *.info files, and system/ with any shared core
+# assets. Release builds use it - the core set changes far less often than
+# the frontend, and the per-core builds are this pipeline's longest pole.
+if [[ -n ${PS5_TITLE_CORES_DIR:-} ]]; then
+    cores_src=$PS5_TITLE_CORES_DIR
+    stage_dir="$root/build/cores/stage"
+    mkdir -p "$stage_dir/cores" "$stage_dir/info" "$stage_dir/system"
+    core_names=()
+    for core_so in "$cores_src"/cores/*_libretro.so; do
+        [[ -f $core_so ]] || break
+        name=$(basename -- "$core_so" _libretro.so)
+        core_names+=("$name")
+        cp -- "$core_so" "$stage_dir/cores/"
+        info_found=false
+        for info_src in "$cores_src/info/${name}_libretro.info" \
+                        "$cores_src/cores/${name}_libretro.info"; do
+            if [[ -f $info_src ]]; then
+                cp -- "$info_src" "$stage_dir/info/"
+                info_found=true
+                break
+            fi
+        done
+        $info_found || { echo "error: no ${name}_libretro.info beside $core_so" >&2; exit 2; }
+        # stage-notices.py ties each shipped core to build/cores/<build>/build.json;
+        # a prebuilt core has no report, so record its real digest under the same
+        # build-slot name the build loop below would use.
+        case $name in
+            pcsx2) build_slot=lrps2 ;;
+            mednafen_psx_hw) build_slot=beetle-psx ;;
+            mednafen_saturn) build_slot=beetle-saturn ;;
+            mupen64plus_next) build_slot=mupen64plus ;;
+            vice_x64sc) build_slot=vice ;;
+            genesis_plus_gx) build_slot=genesis_plus_gx ;;
+            *) build_slot=$name ;;
+        esac
+        mkdir -p "$root/build/cores/$build_slot"
+        python3 - "$core_so" "$root/build/cores/$build_slot/build.json" <<'PY'
+import hashlib, json, sys
+digest = hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest()
+json.dump({"sha256": digest, "source_revision": "prebuilt"},
+          open(sys.argv[2], "w"))
+PY
+    done
+    (( ${#core_names[@]} > 0 )) \
+        || { echo "error: no *_libretro.so under $cores_src/cores" >&2; exit 2; }
+    if [[ -d $cores_src/system ]]; then
+        cp -a -- "$cores_src/system/." "$stage_dir/system/"
+    fi
+    printf '==> [title] staged %d prebuilt cores from %s\n' "${#core_names[@]}" "$cores_src"
+else
 core_names=(fceumm mgba snes9x fbneo genesis_plus_gx ppsspp dolphin pcsx2
     mednafen_psx_hw mupen64plus_next mednafen_saturn vice_x64sc desmume azahar mame rpcs3)
 # RPCS3 (GPL-2.0-only, combined with this port's GPL-3.0 code) is a console build
@@ -85,6 +137,13 @@ for core_name in "${core_names[@]}"; do
         *) script=${core_name//_/-} ;;
     esac
     bash "$root/tools/build-$script.sh"
+    core_files+=("$root/build/cores/stage/cores/${core_name}_libretro.so")
+done
+fi
+# Whether the cores were built above or staged prebuilt, the import table is
+# generated from the .so files that will actually ship.
+core_files=()
+for core_name in "${core_names[@]}"; do
     core_files+=("$root/build/cores/stage/cores/${core_name}_libretro.so")
 done
 python3 "$root/tools/core-imports.py" "${core_files[@]}"
