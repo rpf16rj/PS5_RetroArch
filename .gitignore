@@ -45,6 +45,8 @@ config.h
 
 # Markdown (the docs, plans and notes) stays on this machine: it is not
 # committed or published. The files are kept and updated locally. The README
-# is the one that is committed.
+# is the one that is committed. On this fork the changelog is too: releases
+# here are dated, and the changelog is what a player reads for the history.
 *.md
 !/README.md
+!/CHANGELOG.md

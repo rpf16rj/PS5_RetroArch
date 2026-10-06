@@ -4,6 +4,12 @@
 [PS5_Vulkan](https://github.com/mihawk-99/PS5_Vulkan)'s port of Mesa's RADV
 Vulkan driver.**
 
+> **This is [rpf16rj](https://github.com/rpf16rj)'s fork of
+> [mihawk-99/PS5_RetroArch](https://github.com/mihawk-99/PS5_RetroArch).**
+> It tracks upstream and adds DualSense controller features, extra cores
+> (including a Dreamcast core with online support) and a dated release
+> pipeline. See [This fork](#this-fork) below.
+
 Maintained by [Mihawk](https://github.com/mihawk-99). Based on
 [RetroArch / libretro](https://github.com/libretro/RetroArch), with a native PS5
 application foundation derived from
@@ -33,15 +39,37 @@ configuration persistence and content browsing have been verified on a
 console. This is an active development project; the tested paths below do not
 imply complete core compatibility or Vulkan conformance.
 
-**Latest release: v0.5.7-alpha.5** (a new 4K launcher background; otherwise
+**Latest release on this fork:
+[v2026-10-06](https://github.com/rpf16rj/PS5_RetroArch/releases/latest)** —
+dated tags (`vYYYY-MM-DD`), packaged locally by `tools/publish-release.sh`.
+Upstream's last release: v0.5.7-alpha.5 (a new 4K launcher background; otherwise
 v0.5.6-alpha.5) — see its
 [release notes](https://github.com/mihawk-99/PS5_RetroArch/releases/tag/v0.5.7-alpha.5)
 and [every release](https://github.com/mihawk-99/PS5_RetroArch/releases).
 v0.5.0-alpha.5 was the first release on RADV; v0.4.0-alpha.4 was the last on
 ps5vk, the project's first driver.
 
+## This fork
+
+This fork tracks
+[mihawk-99/PS5_RetroArch](https://github.com/mihawk-99/PS5_RetroArch) and adds:
+
+| Addition | Status |
+| --- | --- |
+| DualSense rumble | ✅ Standard libretro rumble through the joypad driver's `set_rumble`, with a compatible motor mode selected when the pad opens |
+| DualSense haptic audio | ✅ The pad's vibration audio port streams PCM (48 kHz, 256-frame grains) from a dedicated thread |
+| Flycast core | ✅ Dreamcast / Naomi / Atomiswave, built for this pipeline from [rpf16rj/flycast-ps5-libretro-core](https://github.com/rpf16rj/flycast-ps5-libretro-core) |
+| Flycast online | 🚧 Dreamcast Now presence reporting, selectable DNS (dns.flyca.st / Shuouma / alternate community DNS), a DreamPi-compatible configuration server on port 1998 and a configurable MAC identity. UDP inbound through NAT was verified end to end; Alien Front Online match hosting is still under investigation |
+| VMU buzzer on the DualSense speaker | 🚧 The emulated VMU piezo is also routed to the pad's speaker port; awaiting console confirmation |
+| SwanStation core | ✅ PlayStation, shipped alongside Beetle PSX HW |
+| Dated releases | ✅ Tags are `vYYYY-MM-DD`; `tools/publish-release.sh` packages the locally built title folder and creates the GitHub release, and `tools/release-notes.sh` writes the player-facing notes from the commit log. The `cores-bundle` release holds the prebuilt core set that ships in the package |
+
+Everything below this section is upstream's documentation, kept as it is; the
+table above describes what this fork adds on top.
+
 ## Table of contents
 
+- [This fork](#this-fork)
 - [Current status](#current-status)
 - [Available cores](#available-cores)
 - [Graphics and native runtime](#graphics-and-native-runtime)
@@ -110,6 +138,12 @@ lower one is the most that keeps full speed (DeSmuME).
 | [DeSmuME](https://github.com/libretro/desmume) | Nintendo DS | ✅ 5× (1280×960) with the JIT and eight rasterizer threads, full speed, and closing and reopening the game. 6× measured 93–95%. |
 | [Azahar](https://github.com/azahar-emu/azahar) | Nintendo 3DS | ✅ 18× internal resolution (the most Azahar offers) on Vulkan, with asynchronous shader compilation and the JIT, full speed after boot, and closing and reopening the game. Decrypted games only. |
 | [RPCS3](https://github.com/mihawk-99/PS5_RPCS3) (my fork) | PlayStation 3 | ⚠️ **Not in any release: build it yourself from source** ([how](#playstation-3-rpcs3-build-it-yourself); its licence, see [License and third-party terms](#license-and-third-party-terms)). On my console build: 4K at 60 fps in gameplay in one tested game, and 4K held at 30 fps in another (a game with only an "Unlock FPS" patch runs it with RPCS3's frame limit at 30 by default, the "Frame-rate patches" option), steady where the emulation keeps up, with its busiest scenes still at 24–27 fps. Needs your own PS3 system software (`PS3UPDAT.PUP` in `system/RPCS3/`) and your own games; a PSN purchase installs with its `.rap` licence file. |
+
+| [Flycast](https://github.com/rpf16rj/flycast-ps5-libretro-core) (this fork's port) | Dreamcast, Naomi, Atomiswave | ✅ Tested Dreamcast games. Adds Dreamcast Now presence, selectable community DNS, a DreamPi-compatible configuration server and VMU-buzzer output on the DualSense speaker (pending console confirmation). |
+| [SwanStation](https://github.com/libretro/swanstation) | PlayStation | ✅ Beetle PSX fork shipped as an alternative PS1 core. |
+
+**This fork ships seventeen cores in the release package**: upstream's set
+above plus Flycast and SwanStation, staged from the `cores-bundle` release.
 
 None of the games I tested with is provided.
 **Use only legally obtained backups of games you own**, and BIOS files dumped
