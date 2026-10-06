@@ -1,142 +1,42 @@
-name: build-and-release
+name: release
 
-# Builds the PPSA99169 title in CI and publishes it as a GitHub release.
-#
-#   push a tag:      git tag -a v0.6.0 -m "..." && git push origin v0.6.0
-#   or dispatch:     Actions -> build-and-release -> tag input
-#
-# The pipeline is the same one the local WSL build runs:
-#   setup-native-dependencies.sh  SDK fork + zlib
-#   fetch-retroarch.sh            vendor/retroarch at the pinned tag
-#   build-title.sh                frontend archive, RADV link, signing, dist/
-#
-# Two inputs are prebuilt rather than rebuilt here, because rebuilding them
-# costs more than the whole rest of the pipeline and they change far less
-# often than the frontend:
-#   - the libretro cores, downloaded from this repository's `cores-bundle`
-#     release (stage them again locally and re-upload to refresh it)
-#   - the RADV driver archive, built once and then reused from the Actions
-#     cache keyed by the pinned Mesa/Vulkan revisions
+# The title is built locally; tools/publish-release.sh packages dist/ and
+# creates the release with the ZIP attached. This workflow only covers the
+# case where a version tag is pushed without the script: it creates the
+# release with the friendly notes, and the script (or a manual upload) adds
+# the package afterwards.
 
 on:
   push:
     tags: ["v*"]
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: Release tag (e.g. v0.6.0)
-        required: true
 
 permissions:
   contents: write
 
-env:
-  PAYLOAD_SDK_REV: cd3b23973a5b397f624eb3121464ade9528c06a7
-  VULKAN_REV: 3f3ee69
-  MESA_REV: 0b2d6d1a61d9bbf89cf8beb88a696144f67c61f8
-
 jobs:
-  build:
+  release:
     runs-on: ubuntu-latest
     env:
-      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      TAG: ${{ github.ref_name }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.tag || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
-      - name: Host toolchain
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            clang llvm-dev libclang-dev \
-            meson ninja-build rsync zip unzip pkg-config \
-            bison flex python3-mako python3-yaml python3-packaging \
-            libxml2-utils gettext
-          # Mesa's host tools (mesa_clc, vtn_bindgen2) need libclc and the
-          # SPIR-V translator; package names differ across Ubuntu releases.
-          sudo apt-get install -y --no-install-recommends \
-            libclc-dev spirv-llvm-translator \
-          || sudo apt-get install -y --no-install-recommends \
-            libclc-19-dev llvm-spirv-19 \
-          || sudo apt-get install -y --no-install-recommends \
-            libclc-18-dev llvm-spirv-18
-
-      - name: Sibling sources (SDK fork, PS5_Vulkan, PS5_Mesa)
-        run: |
-          mkdir -p deps
-          git clone https://github.com/mihawk-99/PS5_PayloadSDK deps/PS5_PayloadSDK
-          git clone https://github.com/mihawk-99/PS5_Vulkan deps/PS5_Vulkan
-          git -C deps/PS5_Vulkan checkout "$VULKAN_REV"
-          git clone https://github.com/mihawk-99/PS5_Mesa deps/PS5_Mesa
-
-      - name: Cache heavy dependency builds
-        uses: actions/cache@v4
-        with:
-          path: |
-            deps/PS5_Vulkan/.deps
-            .deps
-            vendor/retroarch
-          key: deps-${{ env.PAYLOAD_SDK_REV }}-${{ env.VULKAN_REV }}-${{ env.MESA_REV }}-v1
-
-      - name: PS5 payload SDK (this project's pin)
-        run: PS5_PAYLOAD_SDK_FORK="$PWD/deps/PS5_PayloadSDK" bash tools/setup-native-dependencies.sh
-
-      - name: RADV release archive (PS5_Vulkan + PS5_Mesa)
-        run: |
-          cd deps/PS5_Vulkan
-          PS5_PAYLOAD_SDK_FORK="$PWD/../PS5_PayloadSDK" \
-            bash tools/setup-native-dependencies.sh
-          PS5_MESA_FORK="$PWD/../PS5_Mesa" MESON=meson NINJA=ninja \
-            bash tools/build-radv.sh release
-
-      - name: RetroArch sources
-        run: bash tools/fetch-retroarch.sh
-
-      - name: Prebuilt cores from the cores-bundle release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          mkdir -p cores-bundle
-          gh release download cores-bundle \
-            --repo "${{ github.repository }}" -p 'ps5-cores-bundle.zip' \
-            --dir cores-bundle --clobber
-          (cd cores-bundle && unzip -q -o ps5-cores-bundle.zip && rm ps5-cores-bundle.zip)
-          ls cores-bundle/cores | head
-
-      - name: Build and sign the title
-        env:
-          PS5_PAYLOAD_SDK: ${{ github.workspace }}/.deps/native/ps5-payload-sdk
-          PS5_VULKAN_DIR: ${{ github.workspace }}/deps/PS5_Vulkan
-          PS5_TITLE_CORES_DIR: ${{ github.workspace }}/cores-bundle
-        run: bash tools/build-title.sh
-
-      - name: Package
-        shell: bash
-        run: |
-          title_id=$(python3 -c 'import json; print(json.load(open("sce_sys/param.json"))["titleId"])')
-          pkg="RetroArch-PS5-${TAG}.zip"
-          (cd "dist/$title_id" && zip -qr "$GITHUB_WORKSPACE/$pkg" .)
-          ls -lh "$pkg"
-
       - name: Release notes
-        shell: bash
         run: bash tools/release-notes.sh "$TAG" > release-notes.md
 
-      - name: Publish release
-        shell: bash
+      - name: Create or update release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "RetroArch-PS5-${TAG}.zip" --clobber
             gh release edit "$TAG" \
               --title "RetroArch for PlayStation 5 $TAG" \
               --notes-file release-notes.md
           else
             gh release create "$TAG" \
               --title "RetroArch for PlayStation 5 $TAG" \
-              --notes-file release-notes.md \
-              "RetroArch-PS5-${TAG}.zip"
+              --notes-file release-notes.md
           fi
